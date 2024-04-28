@@ -5,6 +5,7 @@ import java.util.ArrayList;
 public class ArrayListDataSheet {
     private ArrayList<Data> dataList = new ArrayList<>();
 
+
     public int size() {
         return dataList.size();
     }
