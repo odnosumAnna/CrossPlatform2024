@@ -1,0 +1,189 @@
+# Завантажуємо бібліотеки для роботи з RSS і файловою системою
+require 'rss'
+require 'fileutils'
+
+# Оголошуємо клас для генерації RSS-стрічки
+class RSSGenerator
+  # Задаємо атрибути доступу до директорії та файлу RSS
+  attr_reader :directory, :rss_file
+
+  # Ініціалізуємо клас із параметрами директорії та імені RSS-файлу (за замовчуванням 'feed.rss')
+  def initialize(directory, rss_file = 'feed.rss')
+    @directory = directory
+    @rss_file = rss_file
+    # Якщо директорія не існує, створюємо її разом з прикладовими файлами
+    create_sample_files if !Dir.exist?(directory)
+  end
+
+  # Метод для створення тестових файлів, якщо директорія не існує
+  def create_sample_files
+    # Створюємо директорію
+    Dir.mkdir(directory)
+    # Створюємо два текстових файли з прикладовим вмістом
+    File.write(File.join(directory, 'sample1.txt'), "Sample content for file 1.")
+    File.write(File.join(directory, 'sample2.txt'), "Sample content for file 2.")
+    # Виводимо повідомлення про успішне створення
+    puts "Sample directory and files created in: #{directory}"
+  end
+
+  # Основний метод для генерації RSS-стрічки
+  def generate_feed
+    # Перевіряємо, чи існує директорія
+    raise "Directory not found: #{directory}" unless Dir.exist?(directory)
+
+    # Завантажуємо текстові файли з директорії
+    items = load_text_files
+
+    # Створюємо RSS-стрічку за допомогою бібліотеки RSS::Maker
+    rss = RSS::Maker.make("2.0") do |maker|
+      # Налаштовуємо заголовок каналу
+      maker.channel.title = "RSS Feed from #{directory}"
+      maker.channel.link = "http://example.com"
+      maker.channel.description = "RSS feed generated from text files in the directory: #{directory}"
+      maker.channel.language = "en"
+
+      # Для кожного елемента генеруємо RSS-елемент
+      items.each do |item|
+        maker.items.new_item do |rss_item|
+          # Встановлюємо заголовок для кожного елемента
+          rss_item.title = item[:title]
+          # Генеруємо посилання на елемент з використанням заголовку
+          rss_item.link = "http://example.com/#{item[:title].gsub(/\s+/, '_')}"
+          # Встановлюємо опис елемента
+          rss_item.description = item[:content]
+          # Додаємо дату публікації
+          rss_item.pubDate = item[:date]
+        end
+      end
+    end
+
+    # Записуємо створену RSS-стрічку у файл
+    File.write(rss_file, rss)
+    # Виводимо повідомлення про успішне створення файлу
+    puts "RSS feed successfully generated: #{rss_file}"
+  end
+
+  private
+
+  # Метод для завантаження текстових файлів з директорії
+  def load_text_files
+    # Шукаємо всі .txt файли в зазначеній директорії
+    text_files = Dir.glob(File.join(directory, '*.txt'))
+    # Якщо файли не знайдені, кидаємо помилку
+    raise "No text files found in the directory: #{directory}" if text_files.empty?
+
+    # Для кожного знайденого файлу створюємо хеш з його метаданими
+    text_files.map do |file|
+      {
+        title: File.basename(file, '.txt'), # Встановлюємо назву файлу без розширення як заголовок
+        content: File.read(file).strip, # Зчитуємо вміст файлу
+        date: File.mtime(file) # Отримуємо час останньої зміни файлу
+      }
+    end
+  end
+end
+
+# Перевіряємо, чи цей файл є головним, і якщо так, виконуємо генерацію RSS-стрічки
+if __FILE__ == $0
+  # Зчитуємо аргументи командного рядка для директорії та імені файлу RSS
+  directory = ARGV[0] || './texts' # Якщо не передано директорію, використовуємо за замовчуванням './texts'
+  rss_file = ARGV[1] || 'feed.rss' # Якщо не передано ім'я файлу, використовуємо 'feed.rss'
+
+  begin
+    # Створюємо об'єкт генератора RSS та генеруємо стрічку
+    generator = RSSGenerator.new(directory, rss_file)
+    generator.generate_feed
+  rescue StandardError => e
+    # Виводимо помилку, якщо щось пішло не так
+    puts "Error: #{e.message}"
+  end
+end
+
+# Зазначаємо залежність від бібліотеки rspec для тестування
+require 'rspec'
+require_relative 'rss_generator'
+
+# Описуємо тести для класу RSSGenerator
+RSpec.describe RSSGenerator do
+  # Задаємо тестову директорію та файл RSS
+  let(:test_directory) { './test_texts' }
+  let(:test_rss_file) { 'test_feed.rss' }
+
+  # Перед кожним тестом очищаємо директорію та файл
+  before do
+    FileUtils.rm_rf(test_directory) if Dir.exist?(test_directory)
+    FileUtils.rm_f(test_rss_file) if File.exist?(test_rss_file)
+  end
+
+  # Після кожного тесту очищаємо ресурс
+  after do
+    FileUtils.rm_rf(test_directory) if Dir.exist?(test_directory)
+    FileUtils.rm_f(test_rss_file) if File.exist?(test_rss_file)
+  end
+
+  # Тестуємо метод ініціалізації
+  describe '#initialize' do
+    it 'creates the sample directory and files if directory does not exist' do
+      generator = RSSGenerator.new(test_directory, test_rss_file)
+      # Перевіряємо, чи була створена директорія та файли
+      expect(Dir.exist?(test_directory)).to be true
+      expect(File.exist?(File.join(test_directory, 'sample1.txt'))).to be true
+      expect(File.exist?(File.join(test_directory, 'sample2.txt'))).to be true
+    end
+
+    it 'does not overwrite existing files in the directory' do
+      # Створюємо існуючі файли в директорії
+      FileUtils.mkdir_p(test_directory)
+      File.write(File.join(test_directory, 'existing.txt'), "Existing content")
+      generator = RSSGenerator.new(test_directory, test_rss_file)
+      # Перевіряємо, що існуючі файли не були перезаписані
+      expect(File.exist?(File.join(test_directory, 'existing.txt'))).to be true
+      expect(File.read(File.join(test_directory, 'existing.txt'))).to eq("Existing content")
+    end
+  end
+
+  # Тестуємо метод генерації RSS-стрічки
+  describe '#generate_feed' do
+    it 'generates an RSS feed file with items from text files' do
+      generator = RSSGenerator.new(test_directory, test_rss_file)
+      generator.generate_feed
+      # Перевіряємо, що файл RSS був створений
+      expect(File.exist?(test_rss_file)).to be true
+
+      rss_content = File.read(test_rss_file)
+      # Перевіряємо, чи містить RSS-стрічка правильні дані
+      expect(rss_content).to include("RSS Feed from #{test_directory}")
+      expect(rss_content).to include("Sample content for file 1.")
+      expect(rss_content).to include("Sample content for file 2.")
+    end
+
+    it 'raises an error if the directory does not exist' do
+      # Видаляємо директорію для тесту
+      FileUtils.rm_rf(test_directory)
+      generator = RSSGenerator.new(test_directory, test_rss_file)
+      # Перевіряємо, чи кидається помилка, якщо директорія не існує
+      allow(generator).to receive(:load_text_files).and_raise("Directory not found: #{test_directory}")
+      expect { generator.generate_feed }.to raise_error(RuntimeError, "Directory not found: #{test_directory}")
+    end
+
+    it 'raises an error if no text files are found in the directory' do
+      FileUtils.mkdir_p(test_directory)
+      generator = RSSGenerator.new(test_directory, test_rss_file)
+      # Перевіряємо, чи кидається помилка, якщо в директорії немає текстових файлів
+      expect { generator.generate_feed }.to raise_error(RuntimeError, "No text files found in the directory: #{test_directory}")
+    end
+  end
+
+  # Тестуємо метод завантаження текстових файлів
+  describe '#load_text_files' do
+    it 'loads all text files from the directory with correct metadata' do
+      generator = RSSGenerator.new(test_directory, test_rss_file)
+      text_files = generator.send(:load_text_files)
+      # Перевіряємо, чи правильно завантажуються файли з метаданими
+      expect(text_files).to be_an(Array)
+      expect(text_files.length).to eq(2)
+      expect(text_files[0][:title]).to eq('sample1')
+      expect(text_files[1][:title]).to eq('sample2')
+    end
+  end
+end
