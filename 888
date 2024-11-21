@@ -99,6 +99,16 @@ if __FILE__ == $0
   end
 end
 
+
+
+
+
+
+
+
+
+
+
 # Зазначаємо залежність від бібліотеки rspec для тестування
 require 'rspec'
 require_relative 'rss_generator'
